@@ -3,26 +3,16 @@
 namespace UKFast\SDK\Loadbalancers;
 
 use UKFast\SDK\Entities\ClientEntityInterface;
-use UKFast\SDK\Entity;
 use UKFast\SDK\Loadbalancers\Entities\AccessRule;
 use UKFast\SDK\Loadbalancers\Entities\Bind;
 use UKFast\SDK\Loadbalancers\Entities\Cert;
 use UKFast\SDK\Loadbalancers\Entities\Listener;
-use UKFast\SDK\Loadbalancers\Entities\Ssl;
 use UKFast\SDK\SelfResponse;
 use UKFast\SDK\Traits\PageItems;
 
 class ListenerClient extends Client implements ClientEntityInterface
 {
     use PageItems;
-
-    const SSL_MAP = [
-        'binds_id' => 'bindsId',
-        'disable_http2' => 'disableHttp2',
-        'http2_only' => 'onlyHttp2',
-        'custom_ciphers' => 'customCiphers',
-        'custom_tls13_ciphers' => 'customTls13Ciphers',
-    ];
 
     const BIND_MAP = [
         'frontend_id' => 'frontendId',
@@ -65,10 +55,11 @@ class ListenerClient extends Client implements ClientEntityInterface
      */
     public function getSsls($id, $page = 1, $perPage = 15, $filters = [])
     {
-        $filters = $this->sslToApiFormat($filters, self::SSL_MAP);
+        $filters = $this->friendlyToApi(SslClient::sslToApiFormat($filters), SslClient::getEntityMap());
         $page = $this->paginatedRequest("v2/frontends/$id/ssls", $page, $perPage, $filters);
+
         $page->serializeWith(function ($item) {
-            return $this->apiFormatToSsl((array) $item);
+            return $this->ssls()->loadEntity((array) $item);
         });
 
         return $page;
@@ -172,15 +163,14 @@ class ListenerClient extends Client implements ClientEntityInterface
      */
     public function addSsl($id, $ssl)
     {
-        $json = json_encode($this->friendlyToApi($this->sslToApiFormat($ssl), self::SSL_MAP));
-
+        $json = json_encode($this->friendlyToApi(SslClient::sslToApiFormat($ssl), SslClient::getEntityMap()));
         $response = $this->post("v2/frontends/$id/ssls", $json);
         $response = $this->decodeJson($response->getBody()->getContents());
         
         return (new SelfResponse($response))
             ->setClient($this)
             ->serializeWith(function ($response) {
-                return $this->apiFormatToSsl((array) $response->data);
+                return $this->ssls()->loadEntity((array) $response->data);
             });
     }
 
@@ -252,44 +242,9 @@ class ListenerClient extends Client implements ClientEntityInterface
         return $response->getStatusCode() == 204;
     }
 
-    protected function sslToApiFormat($ssl)
-    {
-        $apiFormat = $ssl;
-        if ($ssl instanceof Entity) {
-            $apiFormat = $ssl->toArray();
-        }
-
-        if (isset($apiFormat['allowTls'])) {
-            $apiFormat['allow_tlsv1'] = in_array('1.0', $ssl->allowTls);
-            $apiFormat['allow_tlsv11'] = in_array('1.1', $ssl->allowTls);
-            unset($apiFormat['allowTls']);
-        }
-
-        return $apiFormat;
-    }
-
-    protected function apiFormatToSsl($apiFormat)
-    {
-        $allowTls = [];
-        if ($apiFormat['allow_tlsv1']) {
-            $allowTls[] = '1.0';
-        }
-
-        if ($apiFormat['allow_tlsv11']) {
-            $allowTls[] = '1.1';
-        }
-
-        unset($apiFormat['allow_tlsv11']);
-        unset($apiFormat['allow_tlsv1']);
-
-        $ssl = new Ssl($this->apiToFriendly($apiFormat, self::SSL_MAP));
-        $ssl->allowTls = $allowTls;
-        return $ssl;
-    }
-
     /**
      * @param $data
-     * @return mixed|HardwarePlan
+     * @return mixed|Listener
      */
     public function loadEntity($data)
     {

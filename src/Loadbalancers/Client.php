@@ -53,6 +53,11 @@ class Client extends BaseClient
         return (new VipClient($this->httpClient))->auth($this->token);
     }
 
+    public function ssls()
+    {
+        return (new SslClient($this->httpClient))->auth($this->token);
+    }
+
     public function loadbalancers()
     {
         return (new LoadbalancerClient($this->httpClient))->auth($this->token);
